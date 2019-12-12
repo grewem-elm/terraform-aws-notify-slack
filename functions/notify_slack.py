@@ -45,6 +45,7 @@ def default_notification(subject, message):
 
 # Send a message to a slack channel
 def notify_slack(subject, message, region):
+    prevent_message = False
     slack_url = os.environ['SLACK_WEBHOOK_URL']
     if not slack_url.startswith("http"):
         slack_url = decrypt(slack_url)
@@ -65,6 +66,9 @@ def notify_slack(subject, message, region):
         except json.JSONDecodeError as err:
             logging.exception(f'JSON decode error: {err}')
     if "AlarmName" in message:
+        if message['OldStateValue'] == 'INSUFFICIENT_DATA' and message['NewStateValue'] == 'OK':
+            prevent_message = True
+
         notification = cloudwatch_notification(message, region)
         payload['text'] = "AWS CloudWatch notification - " + message["AlarmName"]
         payload['attachments'].append(notification)
@@ -72,9 +76,10 @@ def notify_slack(subject, message, region):
         payload['text'] = "AWS notification"
         payload['attachments'].append(default_notification(subject, message))
 
-    data = urllib.parse.urlencode({"payload": json.dumps(payload)}).encode("utf-8")
-    req = urllib.request.Request(slack_url)
-    urllib.request.urlopen(req, data)
+    if not prevent_message:
+        data = urllib.parse.urlencode({"payload": json.dumps(payload)}).encode("utf-8")
+        req = urllib.request.Request(slack_url)
+        urllib.request.urlopen(req, data)
 
 
 def lambda_handler(event, context):
